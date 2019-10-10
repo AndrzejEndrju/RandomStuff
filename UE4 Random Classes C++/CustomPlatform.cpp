@@ -1,12 +1,9 @@
 #include "CustomPlatform.h"
 #include "lever.h"
 #include "Observer.h"
-#include "Runtime/Engine/Classes/Kismet/GameplayStatics.h"
 #include "Runtime/Core/Public/Containers/Array.h"
-#include "EngineUtils.h"
 #include "TestGameMode.h"
 #include "TestHud.h"
-#include "Runtime/Engine/Classes/GameFramework/Actor.h"
 #include "TimerManager.h"
 
 ACustomPlatform::ACustomPlatform()
