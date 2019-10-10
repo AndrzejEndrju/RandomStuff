@@ -21,12 +21,12 @@ void ACustomPlatform::Initialize_Implementation(ALever* lever, bool CanResetPlat
 {
 	if (!CanResetPlatforml)
 	{
-        Execute(lever);
+       		Execute(lever);
 	}
 	else if(CanOpenAgain)
 	{
 		Reset();
-        Execute(lever);
+        	Execute(lever);
 	}
 }
 
@@ -47,15 +47,15 @@ void ACustomPlatform::Execute(ALever* LeverParam)
 		{
 			CheckIfAllSwitched();
 		}
-        else
-        {
-            InstantTimer();
-        }
+		else
+		{
+		    InstantTimer();
+		}
 	}
-    else
-    {
-        CheckIfAllSwitched();
-    }
+	else
+	{
+		CheckIfAllSwitched();
+	}
 }
 
 void ACustomPlatform::UpdateSwitches(bool NewVal)
@@ -86,20 +86,20 @@ void ACustomPlatform::SubscribeLevers()
 {
 	for (ALever* lever : RequiredLevers)
 	{
-        if (lever)
-        {
-            lever->Execute_Subscribe(lever, this);
-        }
-        else
-        {
-            UE_LOG(LogTemp, Warning, TEXT("You have an undeclared required lever for %s actor"), *GetNameSafe(this));
-        }
+		if (lever)
+		{
+		    lever->Execute_Subscribe(lever, this);
+		}
+		else
+		{
+		    UE_LOG(LogTemp, Warning, TEXT("You have an undeclared required lever for %s actor"), *GetNameSafe(this));
+		}
 	}
 }
 
 void ACustomPlatform::Reset()
 {
-    HideTimerWidget();
+   	HideTimerWidget();
 	AmountOfSwitchedLevers = 0;
 
 	TimeIn = TimeForPlayerToPerformAction;
@@ -118,10 +118,10 @@ bool ACustomPlatform::CheckIfAllSwitched()
 {
 	if (RequiredLevers.Num() == AmountOfSwitchedLevers)
 	{
-        if (!bPermamentOpen && CanUseTimer)
-        {
-            CreateTimerEvent();
-        }
+		if (!bPermamentOpen && CanUseTimer)
+		{
+		    CreateTimerEvent();
+		}
 
 		if (IsPlatformMovement)
 		{
@@ -130,7 +130,7 @@ bool ACustomPlatform::CheckIfAllSwitched()
 			SetActorTickEnabled(false);
 			UpdateLevers(false);
 
-            HideTimerWidget();
+           		HideTimerWidget();
 		}
 		else
 		{
@@ -139,7 +139,7 @@ bool ACustomPlatform::CheckIfAllSwitched()
 			{
 				CanOpenAgain = false;
 				UpdateLevers(false);
-               			 SetActorTickEnabled(false);
+               			SetActorTickEnabled(false);
 			}
 		}
 		return true;
@@ -148,7 +148,7 @@ bool ACustomPlatform::CheckIfAllSwitched()
 }
 bool ACustomPlatform::UpdateObserver_Implementation(ALever* lever, bool CanInteract)
 {
-    Initialize_Implementation(lever, CanInteract);
+	Initialize_Implementation(lever, CanInteract);
 	return true;
 }
 
@@ -160,22 +160,22 @@ void ACustomPlatform::Tick(float DeltaTime)
 	{
 		TimeIn -= DeltaTime;
 
-        if (TimeIn <= 0)
-        {
-            Reset();
-        }
+		if (TimeIn <= 0)
+		{
+		    Reset();
+		}
 	}
-    else
-    {
-        PlatformIsMoving = false;
-    }
+	else
+	{
+		PlatformIsMoving = false;
+	}
 }
 
 void ACustomPlatform::BeginPlay()
 {
 	Super::BeginPlay();
 
-    SetActorTickEnabled(false);
+	SetActorTickEnabled(false);
 	HUD = ATestGameMode::GetTestHud(GetWorld());
 	BaseLocation = GetActorLocation();
 	TimeIn = TimeForPlayerToPerformAction;
