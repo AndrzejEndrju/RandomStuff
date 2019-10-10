@@ -1,7 +1,6 @@
 #include "CustomPlatform.h"
 #include "lever.h"
 #include "Observer.h"
-#include "Runtime/Core/Public/Containers/Array.h"
 #include "TestGameMode.h"
 #include "TestHud.h"
 #include "TimerManager.h"
@@ -10,7 +9,7 @@ ACustomPlatform::ACustomPlatform()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	PlatformIsMoving = false;
-	CanOpenAgain = true;
+	CanMoveAgain = true;
 	AmountOfSwitchedLevers = 0;
 }
 
@@ -20,7 +19,7 @@ void ACustomPlatform::Initialize_Implementation(ALever* lever, bool CanResetPlat
 	{
        		Execute(lever);
 	}
-	else if(CanOpenAgain)
+	else if(CanMoveAgain)
 	{
 		Reset();
         	Execute(lever);
@@ -123,7 +122,7 @@ bool ACustomPlatform::CheckIfAllSwitched()
 		if (IsPlatformMovement)
 		{
 			PlatformMovementEvent();
-			CanOpenAgain = false;
+			CanMoveAgain = false;
 			SetActorTickEnabled(false);
 			UpdateLevers(false);
 
@@ -131,10 +130,10 @@ bool ACustomPlatform::CheckIfAllSwitched()
 		}
 		else
 		{
-			WallIsMoving = true;
+			PlatformIsMoving = true;
 			if (bPermamentOpen)
 			{
-				CanOpenAgain = false;
+				CanMoveAgain = false;
 				UpdateLevers(false);
                			SetActorTickEnabled(false);
 			}
