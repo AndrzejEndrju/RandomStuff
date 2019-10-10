@@ -1,18 +1,6 @@
 #include "lever.h"
-#include "TestGameMode.h"
-
-ASwitch::ALever()
-{
-    Sequence = CreateDefaultSubobject<USequenceComponent>("SequenceComponent");
-}
-
-void ALever::TryPlaySequence()
-{
-    if (IsPlayingSequece && Sequence->CanPlaySequence())
-    {
-        Sequence->PlaySequence();
-    }
-}
+#include "Subject.h"
+#include "InteractionComponent.h"
 
 void ALever::BeginPlay()
 {
@@ -23,7 +11,6 @@ void ALever::BeginPlay()
 
 bool ALever::Interact()
 {
-    TryPlaySequence();
     Notify_Implementation();
     return true;
 }
