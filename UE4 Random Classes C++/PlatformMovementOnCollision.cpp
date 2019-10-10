@@ -4,7 +4,7 @@ UPlatformMovementOnCollision::UPlatformMovementOnCollision()
 {
     PrimaryComponentTick.bCanEverTick = true;
     IsFinishedMoving = true;
-    AnimationTimeInSeconds = 1;
+    AnimationTimeInSeconds = 1.f;
 }
 
 void UPlatformMovementOnCollision::Initialize()
@@ -16,7 +16,7 @@ void UPlatformMovementOnCollision::Initialize()
 
 void UPlatformMovementOnCollision::SetBasicValues()
 {
-    Dir = 1;
+    Direction = 1;
 
     if (IsFinishedMoving)
     {
@@ -57,7 +57,7 @@ void UPlatformMovementOnCollision::TickComponent(float DeltaTime, ELevelTick Tic
     }
 
     CurrentLocation = GetOwner()->GetActorLocation();
-    Step += ( DeltaTime / ( AnimationTimeInSeconds / 2 ) ) * Dir;
+    Step += ( DeltaTime / ( AnimationTimeInSeconds / 2 ) ) * Direction;
     ValueToGoDown = CachedValueValueToGoDown * Step;
 
     if (Step > 0.f)
@@ -77,7 +77,7 @@ void UPlatformMovementOnCollision::TickComponent(float DeltaTime, ELevelTick Tic
         if (Step >= 1.f)
         {
             Step = 1.f;
-            Dir = -1;
+            Direction = -1;
         }
     }
     else if (Step < 0.f)
