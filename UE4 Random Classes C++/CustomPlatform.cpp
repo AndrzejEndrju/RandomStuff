@@ -131,7 +131,7 @@ bool ACustomPlatform::CheckIfAllSwitched()
 		else
 		{
 			PlatformIsMoving = true;
-			if (bPermamentOpen)
+			if (bStopMovingAfterCertainAction)
 			{
 				CanMoveAgain = false;
 				UpdateLevers(false);
