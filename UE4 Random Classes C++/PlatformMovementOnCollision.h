@@ -64,7 +64,7 @@ public:
      * Variable that determines the direction of movement.
      */
     UPROPERTY(BlueprintReadWrite)
-    int32 Dir;
+    int32 Direction;
 
     /**
      * Variable that determines the value that will be decremented from Z value of platform position for movement animation.
