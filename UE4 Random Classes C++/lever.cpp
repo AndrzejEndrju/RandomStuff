@@ -1,6 +1,5 @@
 #include "lever.h"
 #include "TestGameMode.h"
-#include "Utilities.h"
 
 ASwitch::ALever()
 {
