@@ -33,7 +33,7 @@ void UPlatformMovementOnCollision::BeginPlay()
     SetBasicValues();
 
     CachedValueValueToGoDown = ValueToGoDown;
-    AnimationTimeInSeconds /= 2;
+    AnimationTimeInSeconds *= 0.5f;
 
     if (AnimationTimeInSeconds <= 0.f)
     {
