@@ -57,7 +57,7 @@ void UPlatformMovementOnCollision::TickComponent(float DeltaTime, ELevelTick Tic
     }
 
     CurrentLocation = GetOwner()->GetActorLocation();
-    Step += ( DeltaTime / ( AnimationTimeInSeconds / 2 ) ) * Direction;
+    Step += ( DeltaTime / ( AnimationTimeInSeconds * 0.5f ) ) * Direction;
     ValueToGoDown = CachedValueValueToGoDown * Step;
 
     if (Step > 0.f)
