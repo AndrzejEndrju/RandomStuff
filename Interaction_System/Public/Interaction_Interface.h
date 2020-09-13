@@ -1,4 +1,4 @@
-// Made by Andrzej Serazetdinow
+// Copyright Andrzej Serazetdinow, 2020 All Rights Reserved.
 
 #pragma once
 
@@ -6,43 +6,44 @@
 
 #include "CoreMinimal.h"
 #include "UObject/Interface.h"
-#include "Interaction_Interface.generated.h"
+#include "PlayerInteractionComponent.h"
+#include "InteractionInterface.generated.h"
 
 UINTERFACE(MinimalAPI)
-class UInteraction_Interface : public UInterface
+class UInteractionInterface : public UInterface
 {
 	GENERATED_BODY()
 };
 
-class INTERACTION_SYSTEM_API IInteraction_Interface
+class INTERACTIONSYSTEM_API IInteractionInterface
 {
 	GENERATED_BODY()
 
 public:
 
-	virtual const uint8 GetPriority()
+	virtual uint8 GetPriority() const
 	{
-		return 0;
+		return 0u;
 	}
 
-	virtual const bool CanInteract(AActor* Player)
+	virtual bool CanInteract(const AActor* Player)
 	{
 		return true;
 	}
 
-	virtual void Interact()
+	virtual void Interact(UPlayerInteractionComponent* PIC)
 	{
 		UE_LOG(InteractionSystem, Warning, TEXT("Interacting without implementation for interaction."));
 	}
 
-	virtual void SubscribeToComponent(AActor* Player)
+	virtual void SubscribeToComponent(AActor* Player, bool CurrentlySelected)
 	{
 		UE_LOG(InteractionSystem, Warning, TEXT("Subscribing to player without implementation."));
 	}
-
+	 
 	virtual void UnsubscribeFromComponent(AActor* Player)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Unsubscribing to player without implementation."));
+		UE_LOG(InteractionSystem, Warning, TEXT("Unsubscribing from player without implementation."));
 	}
 
 };
