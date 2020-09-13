@@ -1,71 +1,66 @@
-// Made by Andrzej Serazetdinow
+// Copyright Andrzej Serazetdinow, 2020 All Rights Reserved.
 
 #include "PlayerInteractionComponent.h"
-#include "Interaction_Interface.h"
+#include "InteractionInterface.h"
 #include "InteractableComponent.h"
+#include "NameWidget.h"
+#include "InteractionHoldWidget.h"
+#include "InteractionWidgetOnInteractable.h"
+#include "InteractableWidget.h"
 
 #include "Blueprint/UserWidget.h"
 
 #include "Components/WidgetComponent.h"
 #include "Components/ArrowComponent.h"
-#include "Components/SphereComponent.h"
 
 #include "InteractionLog.h"
 
 UPlayerInteractionComponent::UPlayerInteractionComponent()
+	: CurrentTimeInSecondsForButtonHold(0.f), IsInteracting(false), IsOnlineInteracting(false)
 {
-	SphereComponent = CreateDefaultSubobject<USphereComponent>(FName("InteractionCollision"));
 	PlayerInteractableForwardVector = CreateDefaultSubobject<UArrowComponent>(FName("InteractableForwardVector"));
 
-	bReplicates = false;
+	SetIsReplicatedByDefault(true);
 
-	IsInteractionWidgetHidden = true;
+	PrimaryComponentTick.bCanEverTick = true;
 
 	if (GetOwner())
 	{
-		SphereComponent->AttachToComponent(GetOwner()->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
-		PlayerInteractableForwardVector->AttachToComponent(GetOwner()->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+		PlayerInteractableForwardVector->AttachToComponent(GetOwner()->GetRootComponent(),
+			FAttachmentTransformRules::KeepRelativeTransform);
 	}
-}
-
-void UPlayerInteractionComponent::BeginPlay()
-{
-	APawn* Temp = Cast<APawn>(GetOwner());
-
-	if (!Temp)
-	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Owner casted to APawn is NULL weird error inside BeginPlay PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
-	}
-
-	if (Temp->IsLocallyControlled())
-	{
-		SphereComponent->OnComponentBeginOverlap.AddDynamic(this, &UPlayerInteractionComponent::OnOverlapBegin);
-		SphereComponent->OnComponentEndOverlap.AddDynamic(this, &UPlayerInteractionComponent::OnOverlapEnd);
-
-		TArray<AActor*> OverlappingActors;
-		SphereComponent->GetOverlappingActors(OverlappingActors, TSubclassOf<AActor>());
-
-		for (const auto& Actor : OverlappingActors)
-		{
-			if (Actor != GetOwner())
-			{
-				if (UInteractableComponent* Component = Cast<UInteractableComponent>(Actor->FindComponentByClass(UInteractableComponent::StaticClass())))
-				{
-					AddActorToInteract(Actor);
-				}
-			}
-		}
-	}
-
-	Super::BeginPlay();
 }
 
 void UPlayerInteractionComponent::HideInteractionWidget()
 {
-	if (InteractionWidgetBlueprint && !IsInteractionWidgetHidden)
+	if (InteractionWidgetBase.IsValid() && InteractionWidgetBase.Get()->IsVisible())
 	{
-		InteractionWidgetBlueprint->SetVisibility(ESlateVisibility::Hidden);
-		IsInteractionWidgetHidden = true;
+		InteractionWidgetBase->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void UPlayerInteractionComponent::HideInteractionProgressWidget()
+{
+	if (InteractionProgressWidget.IsValid())
+	{
+		InteractionProgressWidget->SetVisibility(ESlateVisibility::Hidden);
+		CurrentTimeInSecondsForButtonHold = 0.f;
+		InteractionProgressWidget->Reset();
+	}
+}
+
+void UPlayerInteractionComponent::TryHideInteractableName(UInteractableComponent* Component)
+{
+	if (!Component)
+	{
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Component passed to TryHideInteractableName() is nullptr."));
+		return;
+	}
+
+	if (Component->InteractableName && Component->InteractableName->IsVisible())
+	{
+		Component->HideInteractableName();
 	}
 }
 
@@ -73,72 +68,101 @@ void UPlayerInteractionComponent::TryHideInteractionWidgetOnInteractable(UIntera
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to TryHideInteractionWidgetOnInteractable() is nullptr."));
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Component passed to TryHideInteractionWidgetOnInteractable() is nullptr."));
 		return;
 	}
 
-	Component->HideInteractionWidgetOnInteractable();
+	if (Component->InteractionWidgetOnInteractable && Component->InteractionWidgetOnInteractable->IsVisible())
+	{
+		Component->HideInteractionWidgetOnInteractable();
+	}
+}
+
+void UPlayerInteractionComponent::TryHideInteractionProgress(UInteractableComponent* Component)
+{
+	if (!Component)
+	{
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Component passed to TryHideInteractionProgress() is nullptr."));
+		return;
+	}
+
+	if (Component->InteractionWidgetOnInteractable && Component->InteractionWidgetOnInteractable->IsVisible())
+	{
+		Component->HideInteractionWidgetOnInteractable();
+	}
 }
 
 void UPlayerInteractionComponent::TryHideInteractionMarker(UInteractableComponent* Component)
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to TryHideInteractionMarker() is nullptr."));
+		UE_LOG(InteractionSystem, Warning, 
+			TEXT("Component passed to TryHideInteractionMarker() is nullptr."));
 		return;
 	}
 
-	Component->HideInteractionMarker();
+	if (Component->InteractionMarker && Component->InteractionMarker->IsVisible())
+	{
+		Component->HideInteractionMarker();
+	}
 }
 
-void UPlayerInteractionComponent::TryHideInteractionWidget(UInteractableComponent* Component)
+void UPlayerInteractionComponent::TryHideInteractionWidget(const UInteractableComponent* Component)
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to TryHideInteractionWidget() is nullptr."));
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Component passed to TryHideInteractionWidget() is nullptr."));
 		return;
 	}
 
-	if (IsInteractionWidgetHidden)
-	{
-		return;
-	}
-
-	if (!CanInteractWithAnyInteractable())
+	if (!CanInteractWithAnyInteractable() && InteractionWidgetBase.Get() && InteractionWidgetBase->IsVisible())
 	{
 		HideInteractionWidget();
 	}
 }
 
-void UPlayerInteractionComponent::RemoveActorToInteract(AActor* Actor)
+void UPlayerInteractionComponent::RemoveActorToInteract(const AActor* Actor)
 {
 	if (!Actor)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Actor passed to RemoveActorToInteract() is nullptr."));
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Actor passed to RemoveActorToInteract() is nullptr."));
 		return;
 	}
 
-	APawn* Temp = Cast<APawn>(GetOwner());
-
-	if (!Temp)
+	if (!PWN.IsValid())
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Owner casted to APawn is NULL weird error inside RemoveActorToInteract PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
-		return;
+		if (APawn* OWN = Cast<APawn>(GetOwner()))
+		{
+			PWN = OWN;
+		}
+		else
+		{
+			UE_LOG(InteractionSystem, Warning,
+				TEXT("OWN assigned to GetOwner() is invalid is he inheriting from APawn? Error inside RemoveActorToInteract PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
+			return;
+		}
 	}
 
-	UInteractableComponent* Component = Cast<UInteractableComponent>(Actor->FindComponentByClass(UInteractableComponent::StaticClass()));
-
-	if (!Actor)
+	if (!PWN.IsValid())
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Actor passed to RemoveActorToInteract() is nullptr."));
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("PWN assigned to GetOwner() is invalid weird error inside RemoveActorToInteract PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
 		return;
 	}
+
+	UInteractableComponent* Component = Actor->
+		FindComponentByClass<UInteractableComponent>();
 
 	if (!Component)
 	{
 		if (CanShowSystemLog)
 		{
-			UE_LOG(InteractionSystem, Log, TEXT("Actors to interact do not contain component this component. Therefore it won't be removed from ActorsToInteract for player %s."), *GetNameSafe(GetOwner()));
+			UE_LOG(InteractionSystem, Log, 
+				TEXT("Actor to interact does not contain UInteractableComponent component Therefore it won't be removed from ActorsToInteract for player %s."), *GetNameSafe(GetOwner()));
 		}
 
 		return;
@@ -146,20 +170,28 @@ void UPlayerInteractionComponent::RemoveActorToInteract(AActor* Actor)
 
 	if (ActorsToInteract.Contains(Component))
 	{
-
-		if (Component->AmountOfSubscribedPlayers > 0)
+		if (Component->AmountOfSubscribedPlayers)
 		{
 			Component->UnsubscribeFromComponent(GetOwner());
 			TryHideInteractionMarker(Component);
 			TryHideInteractionWidgetOnInteractable(Component);
+			TryHideInteractableName(Component);
+
+			if (InteractableInteracted.IsValid() &&
+				InteractableInteracted.Get() == Component)
+			{
+				InteractableInteracted.Reset();
+			}
 
 			if (OnInteractableUnsubscribedDelegate.IsBound())
 			{
-				OnInteractableUnsubscribedDelegate.Broadcast();
+				OnInteractableUnsubscribedDelegate.Broadcast(Component->GetOwner());
 			}
 		}
 
 		ActorsToInteract.Remove(Component);
+
+		StopInteraction();
 
 		if (!ActorsToInteract.Num())
 		{
@@ -169,16 +201,19 @@ void UPlayerInteractionComponent::RemoveActorToInteract(AActor* Actor)
 			{
 				OnNoInteractablesLeftDelegate.Broadcast();
 			}
+
+			SetComponentTickEnabled(false);
 		}
 			
 		if (CanShowSystemLog)
 		{
-			UE_LOG(InteractionSystem, Log, TEXT("Removed %s from ActorsToInteract for %s player. Amount of actors to interact equals: %d"), *GetNameSafe(Actor), *GetNameSafe(GetOwner()), ActorsToInteract.Num());
+			UE_LOG(InteractionSystem, Log, 
+				TEXT("Removed %s from ActorsToInteract for %s player. Amount of actors to interact equals: %d"), *GetNameSafe(Actor), *GetNameSafe(GetOwner()), ActorsToInteract.Num());
 		}
 	}
 }
 
-void UPlayerInteractionComponent::ChangeInteractionWidget(TSubclassOf<UUserWidget>& WidgetClass)
+void UPlayerInteractionComponent::ChangeInteractionWidget(const TSubclassOf<UInteractableWidget>& WidgetClass)
 {
 	if (WidgetClass)
 	{
@@ -186,234 +221,438 @@ void UPlayerInteractionComponent::ChangeInteractionWidget(TSubclassOf<UUserWidge
 	}
 }
 
-void UPlayerInteractionComponent::OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
-{
-	if (OtherActor && OtherActor != GetOwner() && OtherComp )
-	{
-		AddActorToInteract(OtherActor);
-	}
-}
-
-void UPlayerInteractionComponent::OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-	if (OtherActor && OtherActor != GetOwner() && OtherComp )
-	{
-		RemoveActorToInteract(OtherActor);
-	}
-}
-
-bool UPlayerInteractionComponent::InteractWithInteractables_Server_Validate(UInteractableComponent* ActorToInteract)
+bool UPlayerInteractionComponent::InteractWithInteractablesOn_Server_Validate(
+	UInteractableComponent* ActorToInteract)
 {
 	return true;
 }
 
-void UPlayerInteractionComponent::InteractWithInteractables_Server_Implementation(UInteractableComponent* ActorToInteract)
+void UPlayerInteractionComponent::InteractWithInteractablesOn_Server_Implementation(
+	UInteractableComponent* ActorToInteract)
 {
 	if (!ActorToInteract)
 	{
 		return;
 	}
 
-	ActorToInteract->Interact();
+	ExecuteInteract(ActorToInteract);
+}
 
-	if (ActorToInteract->InteractableStructure.bDisableAfterUsage)
+void UPlayerInteractionComponent::InteractWithInteractablesOnServer()
+ {
+	StopInteraction();
+	IsOnlineInteracting = true;
+
+	if (ActorsToInteract.Num() > 0)
 	{
-		ActorToInteract->InteractableStructure.bDisabled = true;
-		TryHideInteractionMarker(ActorToInteract);
+		if (CanSelectOnlyOneInteractable && InteractableInteracted.IsValid() && 
+			InteractableInteracted.Get()->CanInteract(GetOwner()))
+		{
+			if (InteractableInteracted.Get()->InteractableStructure.bHoldButtonToInteract)
+			{
+				TryShowInteractionProgress(InteractableInteracted.Get());
+				IsInteracting = true;
+				SetComponentTickEnabled(true);
+			}
+			else
+			{
+				InteractWithInteractablesOn_Server(InteractableInteracted.Get());
+				return;
+			}
+		}
+
+		for (const auto& ActorToInteract : ActorsToInteract)
+		{
+			if (ActorToInteract->CanInteract(GetOwner()))
+			{
+				if (ActorToInteract.Get()->InteractableStructure.bHoldButtonToInteract)
+				{
+					InteractableInteracted = ActorToInteract;
+					TryShowInteractionProgress(InteractableInteracted.Get());
+					IsInteracting = true;
+					SetComponentTickEnabled(true);
+				}
+				else
+				{
+					InteractWithInteractablesOn_Server(ActorToInteract.Get());
+				}
+			}
+		}
+	}
+}
+
+void UPlayerInteractionComponent::SortActors()
+{
+	ActorsToInteract.Sort([=](const TWeakObjectPtr<UInteractableComponent>& LHS,
+		const TWeakObjectPtr<UInteractableComponent>& RHS)
+	{
+		return bUseLowerPriorityFirst ? LHS.Get()->GetPriority() < RHS.Get()->GetPriority()
+			: LHS.Get()->GetPriority() > RHS.Get()->GetPriority();
+	});
+}
+
+void UPlayerInteractionComponent::TryExecuteInteract(const TWeakObjectPtr<UInteractableComponent>& Actor)
+{
+	if (!Actor.IsValid())
+	{
+		return;
 	}
 
-	return;
+	if (Actor.Get()->CanInteract(GetOwner()))
+	{
+		if (Actor.Get()->InteractableStructure.bHoldButtonToInteract)
+		{
+			StopInteraction();
+			InteractableInteracted = Actor.Get();
+			TryShowInteractionProgress(InteractableInteracted.Get());
+			IsInteracting = true;
+			SetComponentTickEnabled(true);
+			return;
+		}
+		else
+		{
+			ExecuteInteract(Actor.Get());
+			return;
+		}
+	}
 }
 
 void UPlayerInteractionComponent::InteractWithInteractables()
 {
 	if (ActorsToInteract.Num() > 0)
 	{
-		ActorsToInteract.Sort([=](UInteractableComponent& LHS, UInteractableComponent& RHS)
+		if (CanSelectOnlyOneInteractable && InteractableInteracted.IsValid())
 		{
-			return bUseLowerPriorityFirst ? LHS.GetPriority() < RHS.GetPriority() : LHS.GetPriority() > RHS.GetPriority();
-		});
-
-		for (UInteractableComponent* ActorToInteract : ActorsToInteract)
-		{
-			if (ActorToInteract->CanInteract(GetOwner()))
+			if (!InteractableInteracted.Get()->CanInteract(GetOwner()))
 			{
-				InteractWithInteractables_Server(ActorToInteract);
+				StopInteraction();
+
+				for (auto& Act : ActorsToInteract)
+				{
+					if (Act->CanInteract(GetOwner()))
+					{
+						InteractableInteracted = Act;
+						TryExecuteInteract(InteractableInteracted.Get());
+						return;
+					}
+				}
+			}
+			else
+			{
+				TryExecuteInteract(InteractableInteracted.Get());
+			}
+
+			return;
+		}
+
+		for (const auto& ActorToInteract : ActorsToInteract)
+		{
+			if(ActorToInteract->CanInteract(GetOwner()))
+			{
+				TryExecuteInteract(InteractableInteracted.Get());
+				return;
 			}
 		}
 	}
 }
-	
 
-void UPlayerInteractionComponent::ShowInteractionWidgetOnInteractable(TSubclassOf<UUserWidget>& WidgetClass, UInteractableComponent* Component)
+void UPlayerInteractionComponent::ExecuteInteract(const TWeakObjectPtr<UInteractableComponent>& Actor)
+{
+	if (!Actor.IsValid())
+	{
+		return;
+	}
+
+	if (Actor.Get()->InteractableStructure.bDisableAfterUsage)
+	{
+		Actor.Get()->Disable();
+	}
+
+	Actor.Get()->Interact(this);
+}
+
+void UPlayerInteractionComponent::ShowInteractableName(TSubclassOf<UNameWidget>& WidgetClass, 
+	UInteractableComponent* Component)
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to ShowInteractionWidgetOnInteractable() is nullptr."));
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Component passed to ShowInteractableName() is nullptr."));
 		return;
 	}
 
-	if (Component->IsInteractionWidgetOnInteractableHidden && InteractionWidgetOnInteractable
-		&& Component->InteractionWidgetOnInteractableClass && Component->InteractionWidgetOnInteractableClass->GetClass() == WidgetClass)
+	if (!Component->InteractableName->IsVisible() && InteractionWidgetName.IsValid()
+		&& Component->InteractableNameClass
+		&& Component->InteractableNameClass->GetClass() == WidgetClass)
 	{
-		Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable);
-		Component->IsInteractionWidgetOnInteractableHidden = false;
+		return;
+	}
+
+	if (Component->InteractableNameClass 
+		&& Component->InteractableNameClass->GetClass() != WidgetClass
+		&& PC.IsValid()
+		&& PC->IsLocalPlayerController())
+	{
+		InteractionWidgetName = CreateWidget<UNameWidget>(PC.Get(), WidgetClass);
+
+		if (InteractionWidgetName.IsValid())
+		{
+			Component->ShowInteractableName(InteractionWidgetName.Get());
+
+			if (Component->InteractableName)
+			{
+				Component->InteractableNameClass = WidgetClass;
+			}
+		}
+	}
+	else
+	{
+		if (!PC.IsValid())
+		{
+			SetPC();
+		}
+
+		if (PC.IsValid() && PC->IsLocalPlayerController())
+		{
+			InteractionWidgetName = CreateWidget<UNameWidget>(PC.Get(), WidgetClass);
+
+			if (InteractionWidgetName.IsValid())
+			{
+				Component->ShowInteractableName(InteractionWidgetName.Get());
+			}
+		}
+
+	}
+}
+
+void UPlayerInteractionComponent::ShowInteractionWidgetOnInteractable(
+	TSubclassOf<UInteractionWidgetOnInteractable>& WidgetClass,
+	UInteractableComponent* Component)
+{
+	if (!Component)
+	{
+		UE_LOG(InteractionSystem, Warning, 
+			TEXT("Component passed to ShowInteractionWidgetOnInteractable() is nullptr."));
+		return;
+	}
+
+	if ((bHideInteractionMarkerWhenPlayerCanInteract 
+		|| bHideInteractableNameWhenPlayerCanInteract)
+		&& InteractionWidgetOnInteractable.IsValid())
+	{
+		if (bHideInteractionMarkerWhenPlayerCanInteract)
+		{
+			Component->HideInteractionMarker();
+		}
+
+		if (bHideInteractableNameWhenPlayerCanInteract)
+		{
+			Component->HideInteractableName();
+		}
+
+		Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable.Get());
 
 		return;
 	}
 
-	if (bHideInteractionMarkerWhenPlayerCanInteract && Component && InteractionWidgetOnInteractable)
+	if (Component->InteractionWidgetOnInteractable && !Component->InteractionWidgetOnInteractable->IsVisible() 
+		&& InteractionWidgetOnInteractable.IsValid()
+		&& Component->InteractionWidgetOnInteractableClass &&
+		Component->InteractionWidgetOnInteractableClass->
+		GetClass() == WidgetClass)
 	{
-		Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable);
-		Component->IsInteractionWidgetOnInteractableHidden = false;
-
-		Component->HideInteractionMarker();
-		Component->IsInteractionMarkerHidden = true;
+		Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable.Get());
 
 		return;
 	}
 	 
-	if (Component->InteractionWidgetOnInteractableClass && Component->InteractionWidgetOnInteractableClass->GetClass() != WidgetClass && PC && PC->IsLocalPlayerController())
+	if (Component->InteractionWidgetOnInteractableClass && 
+		Component->InteractionWidgetOnInteractableClass->
+		GetClass() != WidgetClass && PC.IsValid() && PC->IsLocalPlayerController())
 	{
-		InteractionWidgetOnInteractable = CreateWidget<UUserWidget>(PC, WidgetClass, TEXT("InteractableWidgetOnInteractable"));
+		InteractionWidgetOnInteractable = CreateWidget<UInteractionWidgetOnInteractable>(PC.Get(), WidgetClass);
 
-		if (InteractionWidgetOnInteractable)
+		if (InteractionWidgetOnInteractable.IsValid())
 		{
-			Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable);
-
-			if (Component->InteractionWidgetOnInteractable)
-			{
-				Component->InteractionWidgetOnInteractableClass = WidgetClass;
-				Component->IsInteractionWidgetOnInteractableHidden = false;
-			}
+			Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable.Get());
 		}
 	}
 	else
 	{
-
-		if (!PC)
+		if (!PC.IsValid())
 		{
 			SetPC();
 		}
 
-		if (PC && PC->IsLocalPlayerController())
+		if (PC.IsValid() && PC->IsLocalPlayerController())
 		{
-			InteractionWidgetOnInteractable = CreateWidget<UUserWidget>(PC, WidgetClass, TEXT("InteractableWidgetOnInteractable"));
+			InteractionWidgetOnInteractable = CreateWidget<UInteractionWidgetOnInteractable>(PC.Get(), WidgetClass);
 
-			if (InteractionWidgetOnInteractable)
+			if (InteractionWidgetOnInteractable.IsValid())
 			{
-				if (bHideInteractionMarkerWhenPlayerCanInteract && Component && InteractionWidgetOnInteractable)
+				if (bHideInteractionMarkerWhenPlayerCanInteract)
 				{
-					Component->ShowInteractionMarker(InteractionWidgetOnInteractable);
-
-					return;
+					Component->HideInteractionMarker();
 				}
 
-				Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable);
-
-				if (Component->InteractionWidgetOnInteractable)
+				if (bHideInteractableNameWhenPlayerCanInteract)
 				{
-					Component->InteractionWidgetOnInteractableClass = WidgetClass;
-					Component->IsInteractionWidgetOnInteractableHidden = false;
+					Component->HideInteractableName();
 				}
+
+				Component->ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractable.Get());
 			}
 		}
-
 	}
 }
 
-void UPlayerInteractionComponent::ShowInteractionMarker(TSubclassOf<UUserWidget>& WidgetClass, UInteractableComponent* Component)
+void UPlayerInteractionComponent::ShowInteractionProgress(
+	TSubclassOf<UInteractionHoldWidget>& WidgetClass)
+{
+	if (InteractionProgressWidget.IsValid() && InteractionProgressWidget->GetClass() != WidgetClass && PC.IsValid() &&
+		PC->IsLocalPlayerController())
+	{
+		InteractionProgressWidget = CreateWidget<UInteractionHoldWidget>(PC.Get(), WidgetClass,
+			TEXT("InteractableProgressWidget"));
+
+		if (InteractionProgressWidget.IsValid())
+		{
+			InteractionProgressWidget->AddToViewport();
+		}
+	}
+	else if (InteractionProgressWidget.IsValid() && InteractionProgressWidget->GetVisibility() ==
+		ESlateVisibility::Hidden)
+	{
+		InteractionProgressWidget->SetVisibility(ESlateVisibility::Visible);
+		return;
+	}
+	else
+	{
+		if (!PC.IsValid())
+		{
+			SetPC();
+		}
+
+		if (PC.IsValid() && PC->IsLocalPlayerController())
+		{
+			InteractionProgressWidget = CreateWidget<UInteractionHoldWidget>(PC.Get(), WidgetClass,
+				TEXT("InteractableProgressWidget"));
+
+			if (InteractionProgressWidget.IsValid())
+			{
+				InteractionProgressWidget->AddToViewport();
+				InteractionProgressWidget->SetVisibility(ESlateVisibility::Visible); //Just to make sure it's Visible
+			}
+		}
+	}
+}
+
+void UPlayerInteractionComponent::ShowInteractionMarker(TSubclassOf<UUserWidget>& WidgetClass, 
+	UInteractableComponent* Component)
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to ShowInteractionMarker() is nullptr."));
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Component passed to ShowInteractionMarker() is nullptr."));
 		return;
 	}
 
-	if (Component->IsInteractionMarkerHidden && InteractionMarker && Component->InteractableMarkerClass && Component->InteractableMarkerClass->GetClass() == WidgetClass)
+	if (Component->InteractionMarker && !Component->InteractionMarker->IsVisible() 
+		&& InteractionMarker.IsValid() && Component->InteractableMarkerClass
+		&& Component->InteractableMarkerClass->GetClass() == WidgetClass)
 	{
-		Component->ShowInteractionMarker(InteractionMarker);
-		Component->IsInteractionMarkerHidden = false;
+		Component->ShowInteractionMarker(InteractionMarker.Get());
 
 		return;
 	}
 
-	if (Component->InteractableMarkerClass && Component->InteractableMarkerClass->GetClass() != WidgetClass && PC && PC->IsLocalPlayerController())
+	if (Component->InteractableMarkerClass &&
+		Component->InteractableMarkerClass->GetClass() != WidgetClass 
+		&& PC.IsValid() && PC->IsLocalPlayerController())
 	{
-		InteractionMarker = CreateWidget<UUserWidget>(PC, WidgetClass, TEXT("InteractableMarker"));
 
-		if (InteractionMarker)
+		InteractionMarker = CreateWidget<UUserWidget>(PC.Get(), WidgetClass, TEXT("InteractableMarker"));
+
+		if (InteractionMarker.IsValid())
 		{
-			Component->ShowInteractionMarker(InteractionMarker);
+			Component->ShowInteractionMarker(InteractionMarker.Get());
 
 			if (Component->InteractionMarker)
 			{
 				Component->InteractableMarkerClass = WidgetClass;
-				Component->IsInteractionMarkerHidden = false;
 			}
 		}
 	}
 	else
 	{
-		if (!PC)
+		if (!PC.IsValid())
 		{
 			SetPC();
 		}
 
-		if (PC && PC->IsLocalPlayerController())
+		if (PC.IsValid() && PC->IsLocalPlayerController())
 		{
-			InteractionMarker = CreateWidget<UUserWidget>(PC, WidgetClass, TEXT("InteractableMarker"));
+			InteractionMarker = CreateWidget<UUserWidget>(PC.Get(), WidgetClass, TEXT("InteractableMarker"));
 
-			if (InteractionMarker)
+			if (InteractionMarker.IsValid())
 			{
-				Component->ShowInteractionMarker(InteractionMarker);
-
-				if (Component->InteractionMarker)
-				{
-					Component->InteractableMarkerClass = WidgetClass;
-					Component->IsInteractionMarkerHidden = false;
-				}
+				Component->ShowInteractionMarker(InteractionMarker.Get());
 			}
 		}
 	}
 }
 
-void UPlayerInteractionComponent::ShowInteractionWidget(TSubclassOf<UUserWidget>& WidgetClass)
+void UPlayerInteractionComponent::ShowInteractionWidget(const TSubclassOf<UInteractableWidget>& WidgetClass)
 {
-	if (InteractionWidgetBlueprint && InteractionWidgetBlueprint->GetClass() != WidgetClass && PC && PC->IsLocalPlayerController())
+	if (InteractionWidgetBase.IsValid() && InteractionWidgetBase->GetClass() != WidgetClass && PC.IsValid() &&
+		PC->IsLocalPlayerController())
 	{
-		InteractionWidgetBlueprint = CreateWidget<UUserWidget>(PC, WidgetClass, TEXT("InteractableWidget"));
+		InteractionWidgetBase = CreateWidget<UInteractableWidget>(PC.Get(), WidgetClass,
+			TEXT("InteractableWidget"));
 
-		if (InteractionWidgetBlueprint)
+		if (InteractionWidgetBase.IsValid())
 		{
-			InteractionWidgetBlueprint->AddToViewport();
-			IsInteractionWidgetHidden = false;
+			if (InteractableInteracted.IsValid())
+			{
+				InteractionWidgetBase->OnTextChanged(
+					InteractableInteracted.Get()->InteractableStructure.InteractionText);
+			}
+			InteractionWidgetBase->AddToViewport();
 		}
 	}
-
-	else if (InteractionWidgetBlueprint && InteractionWidgetBlueprint->GetVisibility() == ESlateVisibility::Hidden)
+	else if (InteractionWidgetBase.IsValid())
 	{
-		InteractionWidgetBlueprint->SetVisibility(ESlateVisibility::Visible);
-		IsInteractionWidgetHidden = false;
+		InteractionWidgetBase->OnTextChanged(
+			InteractableInteracted.Get()->InteractableStructure.InteractionText);
+
+		if (InteractionWidgetBase.Get()->Visibility == ESlateVisibility::Hidden)
+		{
+			InteractionWidgetBase->SetVisibility(ESlateVisibility::Visible);
+		}
 
 		return;
 	}
-
 	else
 	{
-		if (!PC)
+		if (!PC.IsValid())
 		{
 			SetPC();
 		}
 
-		if (PC && PC->IsLocalPlayerController())
+		if (PC.IsValid() && PC->IsLocalPlayerController())
 		{
-			InteractionWidgetBlueprint = CreateWidget<UUserWidget>(PC, WidgetClass, TEXT("InteractableWidget"));
+			InteractionWidgetBase = CreateWidget<UInteractableWidget>(PC.Get(), WidgetClass,
+				TEXT("InteractableWidget"));
 
-			if (InteractionWidgetBlueprint)
+			if (InteractionWidgetBase.IsValid())
 			{
-				InteractionWidgetBlueprint->AddToViewport();
-				IsInteractionWidgetHidden = false;
+				if (InteractableInteracted.IsValid())
+				{
+					InteractionWidgetBase->OnTextChanged(
+						InteractableInteracted.Get()->InteractableStructure.InteractionText);
+				}
+				InteractionWidgetBase->AddToViewport();
+				InteractionWidgetBase->SetVisibility(ESlateVisibility::Visible); //Just to make sure it's Visible
 			}
 		}
 	}
@@ -421,21 +660,30 @@ void UPlayerInteractionComponent::ShowInteractionWidget(TSubclassOf<UUserWidget>
 
 void UPlayerInteractionComponent::SetPC()
 {
-	PWN = Cast<APawn>(GetOwner());
+	if (PC.IsValid())
+	{
+		return;
+	}
 
-	if (PWN)
+	if (!PWN.IsValid())
+	{
+		PWN = Cast<APawn>(GetOwner());
+	}
+
+	if (PWN.IsValid())
 	{
 		PC = Cast<APlayerController>(PWN->GetController());
 	}
 	else
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Owner casted to APawn is NULL weird error inside SetPC PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("PWN assigned to GetOwner() is invalid weird error inside SetPC PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
 	}
 }
 
-bool UPlayerInteractionComponent::CanInteractWithAnyInteractable()
+bool UPlayerInteractionComponent::CanInteractWithAnyInteractable() const
 {
-	for (UInteractableComponent* ActorToInteract : ActorsToInteract)
+	for (auto& ActorToInteract : ActorsToInteract)
 	{
 		if (ActorToInteract->CanInteract(GetOwner()))
 		{
@@ -446,11 +694,34 @@ bool UPlayerInteractionComponent::CanInteractWithAnyInteractable()
 	return false;
 }
 
-void UPlayerInteractionComponent::TryShowInteractionWidgetOnInteractable(UInteractableComponent* Component)
+void UPlayerInteractionComponent::TryShowInteractableName(UInteractableComponent* Component)
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to TryShowInteractionWidgetOnInteractable() is nullptr."));
+		UE_LOG(InteractionSystem, Warning, 
+			TEXT("Component passed to TryShowInteractableName() is nullptr."));
+		return;
+	}
+
+	if (Component->InteractableStructure.bDisabled || 
+		(bHideInteractableNameWhenPlayerCanInteract && Component->CanInteract(GetOwner())))
+	{
+		return;
+	}
+
+	if (NameWidgetBP)
+	{
+		ShowInteractableName(NameWidgetBP, Component);
+	}
+}
+
+void UPlayerInteractionComponent::TryShowInteractionWidgetOnInteractable(
+	UInteractableComponent* Component)
+{
+	if (!Component)
+	{
+		UE_LOG(InteractionSystem, Warning, 
+			TEXT("Component passed to TryShowInteractionWidgetOnInteractable() is nullptr."));
 		return;
 	}
 
@@ -464,16 +735,39 @@ void UPlayerInteractionComponent::TryShowInteractionWidgetOnInteractable(UIntera
 		ShowInteractionWidgetOnInteractable(InteractionWidgetOnInteractableBP, Component);
 	}
 }
+
+void UPlayerInteractionComponent::TryShowInteractionProgress(
+	UInteractableComponent* Component)
+{
+	if (!Component)
+	{
+		UE_LOG(InteractionSystem, Warning,
+			TEXT("Component passed to TryShowInteractionProgress() is nullptr."));
+		return;
+	}
+
+	if (Component->InteractableStructure.bDisabled)
+	{
+		return;
+	}
+
+	if (InteractionProgresBP)
+	{
+		ShowInteractionProgress(InteractionProgresBP);
+	}
+}
  
 void UPlayerInteractionComponent::TryShowInteractionMarker(UInteractableComponent* Component)
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to TryShowInteractionMarker() is nullptr."));
+		UE_LOG(InteractionSystem, Warning, 
+			TEXT("Component passed to TryShowInteractionMarker() is nullptr."));
 		return;
 	}
 
-	if (Component->InteractableStructure.bDisabled || (bHideInteractionMarkerWhenPlayerCanInteract && !Component->IsInteractionWidgetOnInteractableHidden))
+	if (Component->InteractableStructure.bDisabled || (bHideInteractionMarkerWhenPlayerCanInteract &&
+		Component->CanInteract(GetOwner())))
 	{
 		return;
 	}
@@ -484,11 +778,12 @@ void UPlayerInteractionComponent::TryShowInteractionMarker(UInteractableComponen
 	}
 }
 
-void UPlayerInteractionComponent::TryShowInteractionWidget(UInteractableComponent* Component)
+void UPlayerInteractionComponent::TryShowInteractionWidget(const UInteractableComponent* Component)
 {
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Component passed to TryShowInteractionWidget() is nullptr."));
+		UE_LOG(InteractionSystem, Warning, 
+			TEXT("Component passed to TryShowInteractionWidget() is nullptr."));
 		return;
 	}
 
@@ -503,7 +798,7 @@ void UPlayerInteractionComponent::TryShowInteractionWidget(UInteractableComponen
 	}
 }
 
-void UPlayerInteractionComponent::AddActorToInteract(AActor* Actor)
+void UPlayerInteractionComponent::AddActorToInteract(const AActor* Actor)
 {
 	if (!Actor)
 	{
@@ -511,46 +806,140 @@ void UPlayerInteractionComponent::AddActorToInteract(AActor* Actor)
 		return;
 	}
 
-	APawn* Temp = Cast<APawn>(GetOwner());
-
-	if (!Temp)
+	if (!PWN.IsValid())
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Owner casted to APawn is NULL weird error inside AddActorToInteract PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
-		return;
+		if (APawn* OWN = Cast<APawn>(GetOwner()))
+		{
+			PWN = OWN;
+		}
+		else
+		{
+			UE_LOG(InteractionSystem, Warning,
+				TEXT("OWN assigned to GetOwner() is invalid is he inheriting from APawn? Error inside AddActorToInteract PlayerInteractionComponent. Owner name: %s"), *GetNameSafe(GetOwner()));
+			return;
+		}
 	}
 
-	UInteractableComponent* Component = Cast<UInteractableComponent>(Actor->FindComponentByClass(UInteractableComponent::StaticClass()));
+	UInteractableComponent* Component = Actor->
+		FindComponentByClass<UInteractableComponent>();
 
 	if (!Component)
 	{
-		UE_LOG(InteractionSystem, Warning, TEXT("Actor passed to AddActorToInteract() has nullptr interactable component."));
+		UE_LOG(InteractionSystem, Warning, 
+			TEXT("Actor passed to AddActorToInteract() has nullptr interactable component."));
 		return;
 	}
 
-	if (!ActorsToInteract.Contains(Component))
+	if (ActorsToInteract.Contains(Component))
 	{
-		ActorsToInteract.Add(Component);
-		Component->SubscribeToComponent(GetOwner());
-		Component->InstancedDSP = DSProperties;
+		return;
+	}
 
-		Component->SetWidgetRotationSettings(bRotateWidgetsTowardsPlayerCamera, bRotateWidgetsTowardsPlayerPawn);
+	Component->SubscribeToComponent(GetOwner(), !InteractableInteracted.IsValid());
 
-		if (ActorsToInteract.Num() == 1)
+	if (!Component->IsSubscribed(this))
+	{
+		return;
+	}
+
+	ActorsToInteract.Add(Component);
+	Component->InstancedDSP = DSProperties;
+
+	if (!InteractableInteracted.IsValid())
+	{
+		StopInteraction();
+		InteractableInteracted = Component;
+	}
+
+	SortActors();
+
+	Component->SetWidgetRotationSettings(bRotateWidgetsTowardsPlayerCamera,
+		bRotateWidgetsTowardsPlayerPawn);
+
+	if (ActorsToInteract.Num() == 1)
+	{
+		if (OnFirstInteractableSubscribedDelegate.IsBound())
 		{
-			if (OnFirstInteractableSubscribedDelegate.IsBound())
+			OnFirstInteractableSubscribedDelegate.Broadcast(Component->GetOwner());
+		}
+	}
+
+	if (OnInteractableSubscribedDelegate.IsBound())
+	{
+		OnInteractableSubscribedDelegate.Broadcast(Component->GetOwner());
+	}
+
+	if (CanShowSystemLog)
+	{
+		UE_LOG(InteractionSystem, Log, 
+			TEXT("Added %s to ActorsToInteract for %s player. Amount of actors to interact equals: %d"), *GetNameSafe(Actor), *GetNameSafe(GetOwner()), ActorsToInteract.Num());
+	}
+}
+
+void UPlayerInteractionComponent::StopInteraction()
+{
+	IsInteracting = false;
+	CurrentTimeInSecondsForButtonHold = 0.f;
+	HideInteractionProgressWidget();
+	SetComponentTickEnabled(false);
+}
+
+void UPlayerInteractionComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	SetComponentTickEnabled(false);
+}
+
+void UPlayerInteractionComponent::TickComponent(float DeltaTime, ELevelTick TickType,
+	FActorComponentTickFunction* ThisTickFunction)
+{
+	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
+
+	if (!InteractableInteracted.IsValid())
+	{
+		StopInteraction();
+
+		for (auto& Act : ActorsToInteract)
+		{
+			if (Act->CanInteract(GetOwner()))
 			{
-				OnFirstInteractableSubscribedDelegate.Broadcast();
+				InteractableInteracted = Act;
+				break;
 			}
 		}
+	}
+	else if (!InteractableInteracted.Get()->CanInteract(GetOwner()) || !IsInteracting)
+	{
+		InteractableInteracted.Reset();
+		StopInteraction();
+		return;
+	}
 
-		if (OnInteractableSubscribedDelegate.IsBound())
-		{
-			OnInteractableSubscribedDelegate.Broadcast();
-		}
+	if (!InteractionProgressWidget.IsValid() || !InteractableInteracted.IsValid())
+	{
+		StopInteraction();
+		return;
+	}
 
-		if (CanShowSystemLog)
+	if (InteractableInteracted.Get()->InteractableStructure.TimeInSecondsForButtonHold
+		<= CurrentTimeInSecondsForButtonHold)
+	{
+		IsOnlineInteracting ? InteractWithInteractablesOn_Server(InteractableInteracted.Get()) 
+			: ExecuteInteract(InteractableInteracted.Get());
+
+		if (InteractableInteracted.IsValid() && InteractableInteracted.Get()->InteractableStructure.CanHoldMultipleTimes)
 		{
-			UE_LOG(InteractionSystem, Log, TEXT("Added %s to ActorsToInteract for %s player. Amount of actors to interact equals: %d"), *GetNameSafe(Actor), *GetNameSafe(GetOwner()), ActorsToInteract.Num());
+			CurrentTimeInSecondsForButtonHold = 0.f;
 		}
+		else
+		{
+			StopInteraction();
+		}
+	}
+	else
+	{
+		CurrentTimeInSecondsForButtonHold += DeltaTime;
+		InteractionProgressWidget.Get()->OnHoldCalled(CurrentTimeInSecondsForButtonHold / InteractableInteracted.Get()->InteractableStructure.TimeInSecondsForButtonHold);
 	}
 }
