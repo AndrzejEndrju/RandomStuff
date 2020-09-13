@@ -1,15 +1,19 @@
-// Made by Andrzej Serazetdinow
+// Copyright Andrzej Serazetdinow, 2020 All Rights Reserved.
 
 #pragma once
 
 #include "CoreMinimal.h"
 #include "Components/SceneComponent.h"
-#include "Interaction_Interface.h"
+
+#include "InteractionInterface.h"
 #include "PlayerInteractionComponent.h"
+
 #include "InteractableComponent.generated.h"
 
-class USphereComponent;
 class UWidgetComponent;
+class USphereComponent;
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FDynamicMulticastDelegateOP_P, AActor*, Player);
 
 constexpr float PlayerLooksAtInteractableValue = 3.14f;
 constexpr float Multiplier = 180.f / PI;
@@ -18,26 +22,47 @@ constexpr float FAILED_Angle = 400.f;
 USTRUCT(BlueprintType)
 struct FInteractable
 {
-	GENERATED_USTRUCT_BODY()
+	GENERATED_BODY()
 
 public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
+	FText InteractableName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
+	FText InteractionText;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
 	bool bAlwaysDrawDebugStrings = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bDoesDistanceToPlayerMatter"), Category = "Interactable Option")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bDoesDistanceToPlayerMatter"),
+		Category = "Interactable Option")
 	float MaximumDistanceToPlayer = 125.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bDoesAngleMatter"), Category = "Interactable Option")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bDoesAngleMatter"),
+		Category = "Interactable Option")
 	float PlayersAngleMarginOfErrorToInteractable = 40.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bRandomizePriority"), Category = "Interactable Option")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
+	bool bHoldButtonToInteract = true;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
+	bool CanHoldMultipleTimes = false;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bHoldButtonToInteract"),
+		Category = "Interactable Option")
+	float TimeInSecondsForButtonHold = 2.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bRandomizePriority"),
+		Category = "Interactable Option")
 	int32 Priority = 0;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bRandomizePriority"), Category = "Interactable Option")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bRandomizePriority"),
+		Category = "Interactable Option")
 	int32 PriorityRandomizedMIN = 0;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bRandomizePriority"), Category = "Interactable Option")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bRandomizePriority"),
+		Category = "Interactable Option")
 	int32 PriorityRandomizedMAX = 255;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
@@ -67,28 +92,28 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
 	bool bDisabled = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Option")
-	bool bChangeEnabilityOnlyLocally = false;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Debug Options")
 	bool bOverrideDebugStringLocation = false;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interactable Debug Options")
 	bool bDrawDebugLineForReachability = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bOverrideDebugStringLocation"), Category = "Interactable Debug Options")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "bOverrideDebugStringLocation"),
+		Category = "Interactable Debug Options")
 	FVector NewDebugStringLocation;
 
 };
 
 UCLASS(ClassGroup = (Custom), meta = (BlueprintSpawnableComponent), Blueprintable)
-class INTERACTION_SYSTEM_API UInteractableComponent : public USceneComponent, public IInteraction_Interface
+class INTERACTIONSYSTEM_API UInteractableComponent : public USceneComponent, public IInteractionInterface
 {
 	GENERATED_BODY()
 
 private:
 
-	TArray<UPlayerInteractionComponent*> PlayerComponents;
+	TArray<TWeakObjectPtr<UPlayerInteractionComponent>> PlayerComponents;
+
+	FTimerHandle InteractionTimerHandle;
 
 	FRotator WidgetRotation;
 
@@ -98,7 +123,16 @@ private:
 
 	bool bRotateWidgetsTowardsPlayerPawnCMP : 1;
 
+	bool InteractionWidgetOnInteractableUsable : 1;
+
+	bool InteractionMarkerUsable : 1;
+
+	bool NameWidgetUsable : 1;
+
 public:
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "NameWidget")
+	UWidgetComponent* InteractableName;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "InteractableMarker")
 	UWidgetComponent* InteractionMarker;
@@ -106,22 +140,30 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "InteractionWidgetOnInteractable")
 	UWidgetComponent* InteractionWidgetOnInteractable;
 
+	UPROPERTY(BlueprintReadWrite, EditAnywhere, Category = "Interaction")
+	USphereComponent* SphereComponent;
+
+	TSubclassOf<UNameWidget> InteractableNameClass;
+
 	TSubclassOf<UUserWidget> InteractableMarkerClass;
 
-	TSubclassOf<UUserWidget> InteractionWidgetOnInteractableClass;
+	TSubclassOf<UInteractionWidgetOnInteractable> InteractionWidgetOnInteractableClass;
 
 	FDebugStringProperties InstancedDSP;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!RandomizeRarityValue"), Category = "Interaction")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!RandomizeRarityValue"),
+		Category = "Interaction")
 	int32 RarityValue;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
 	bool RandomizeRarityValue = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "RandomizeRarityValue"), Category = "Interaction")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "RandomizeRarityValue"),
+		Category = "Interaction")
 	int32 RarityRandomizedMIN = 0;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "RandomizeRarityValue"), Category = "Interaction")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "RandomizeRarityValue"),
+		Category = "Interaction")
 	int32 RarityRandomizedMAX = 255;
 
 	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
@@ -133,36 +175,40 @@ public:
 	UPROPERTY(BlueprintReadWrite, Category = "Interaction")
 	int32 AmountOfSubscribedPlayers = 0;
 
-	bool IsInteractionWidgetOnInteractableHidden : 1;
-
-	bool IsInteractionMarkerHidden : 1;
-
-	bool CanShowInteractionMarker : 1;
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Interaction")
 	bool bUseRotationVariablesFromPlayerComponent = true;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseRotationVariablesFromPlayerComponent"), Category = "Interaction")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseRotationVariablesFromPlayerComponent"),
+		Category = "Interaction")
 	bool bRotateWidgetsTowardsPlayerCamera = false;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseRotationVariablesFromPlayerComponent"), Category = "Interaction")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, meta = (EditCondition = "!bUseRotationVariablesFromPlayerComponent"),
+		Category = "Interaction")
 	bool bRotateWidgetsTowardsPlayerPawn = false;
+
+	bool CanShowInteractionMarker;
 
 #pragma region Delegates
 
 public:
 
 	UPROPERTY(BlueprintAssignable)
-	FDynamicMulticastDelegate InteractDelegate;
+	FDynamicMulticastDelegateOP_P InteractDelegate;
 
 	UPROPERTY(BlueprintAssignable)
-	FDynamicMulticastDelegate OnCanInteractDelegate;
+	FDynamicMulticastDelegateOP_P OnCanInteractDelegate;
 
 	UPROPERTY(BlueprintAssignable)
-	FDynamicMulticastDelegate OnSubscribedDelegate;
+	FDynamicMulticastDelegateOP_P OnSubscribedDelegate;
 
 	UPROPERTY(BlueprintAssignable)
-	FDynamicMulticastDelegate OnUnsubscribedDelegate;
+	FDynamicMulticastDelegateOP_P OnSelectedDelegate;
+
+	UPROPERTY(BlueprintAssignable)
+	FDynamicMulticastDelegateOP_P OnUnsubscribedDelegate;
+
+	UPROPERTY(BlueprintAssignable)
+	FDynamicMulticastDelegate OnNameWidgetUsable;
 
 	UPROPERTY(BlueprintAssignable)
 	FDynamicMulticastDelegate OnInteractionWidgetOnInteractableUsable;
@@ -172,10 +218,40 @@ public:
 
 #pragma endregion
 
+#pragma region Interaction Interface
+
 public:
 
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	virtual bool CanInteract(const AActor* Player) override;
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	virtual void Interact(UPlayerInteractionComponent* PIC) override;
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	virtual void SubscribeToComponent(AActor* Player, bool CurrentlySelected) override;
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	virtual void UnsubscribeFromComponent(AActor* Player) override;
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	virtual uint8 GetPriority() const override
+	{
+		return InteractableStructure.Priority;
+	}
+
+#pragma endregion
+
+public:
+
+	UFUNCTION(BlueprintCallable, Category = "NameWidget")
+	void ShowInteractableName(UNameWidget* Widget);
+
+	UFUNCTION(BlueprintCallable, Category = "NameWidget")
+	void HideInteractableName();
+
 	UFUNCTION(BlueprintCallable, Category = "InteractionWidgetOnInteractable")
-	void ShowInteractionWidgetOnInteractable(UUserWidget* Widget);
+	void ShowInteractionWidgetOnInteractable(UInteractionWidgetOnInteractable* Widget);
 
 	UFUNCTION(BlueprintCallable, Category = "InteractionWidgetOnInteractable")
 	void HideInteractionWidgetOnInteractable();
@@ -187,39 +263,36 @@ public:
 	void HideInteractionMarker();
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void SubscribeToComponent(AActor* Player) override;
-
-	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void UnsubscribeFromComponent(AActor* Player) override;
-
-	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	const uint8 GetPriority() override;
-
-	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	bool IsAnySubscribedPlayerLocallyControlled();
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	bool CanAnyPlayerInteract();
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	APawn* GetLocallyControlledPlayer();
+	APawn* GetLocallyControlledPlayer() const;
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	const bool CanInteract(AActor* Player) override;
+	void CheckOverlappingActors();
 
-	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void Interact() override;
-
-	// Enable an disabled interactable for interaction on client
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void Enable();
 
-	// Disable an enabled interactable for interaction on client
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
-	void Disable(bool bDisableForEveryone);
+	void Disable();
 
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	void SetWidgetRotationSettings(bool IsCameraRotation, bool IsPawnRotation);
+
+	UFUNCTION()
+	void OnOverlapBegin(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnOverlapEnd(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex);
+
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	bool IsSubscribed(const UPlayerInteractionComponent* PlayerComponent) const;
 
 private:
 
@@ -227,19 +300,19 @@ private:
 
 	void GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const;
 
-	void BroadcastCanInteract(UPlayerInteractionComponent* PlayerComponent);
+	void BroadcastCanInteract(const UPlayerInteractionComponent* PlayerComponent) const;
 
-	void RotateWidgetsToPlayerCamera();
+	void RotateWidgetsToPlayer(bool ToCamera);
 
-	void RotateWidgetsToPlayerPawn();
+	void DrawDebugStrings(const AActor* Player) const;
 
-	void DrawDebugStrings(AActor* Player);
+	bool CheckReachability(const AActor* SubscribedPlayer) const;
 
-	bool CheckReachability(AActor* SubscribedPlayer) const;
+	float CheckDistanceToPlayer(const AActor* SubscribedPlayer) const;
 
-	const float CheckDistanceToPlayer(AActor* SubscribedPlayer) const;
+	float CheckAngleToPlayer(const AActor* SubscribedPlayer) const;
 
-	const float CheckAngleToPlayer(AActor* SubscribedPlayer) const;
+	void TryHideWidgets(UPlayerInteractionComponent* PlayerComponent);
 
 protected:
 
